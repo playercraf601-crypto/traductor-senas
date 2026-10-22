@@ -3,22 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Traductor de señas</title>
-
+  <title>Mi traductor de señas</title>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
-
   <style>
     body {
       font-family: Arial, sans-serif;
       text-align: center;
       background: #f0f4ff;
       padding: 20px;
-      color: #222;
     }
-
     h1 { color: #2346a0; }
-
     button {
       background: #2346a0;
       color: white;
@@ -26,129 +21,78 @@
       padding: 14px 24px;
       border-radius: 10px;
       font-size: 18px;
-      margin: 8px;
-      cursor: pointer;
     }
-
-    button:disabled { opacity: 0.6; }
-
     #resultado {
-      font-size: 26px;
+      font-size: 28px;
       font-weight: bold;
       margin: 20px;
     }
-
-    #webcam canvas {
-      max-width: 100%;
-      height: auto;
-      border-radius: 12px;
-    }
-
-    #lista { font-size: 17px; }
+    #webcam { margin: auto; }
+    #lista { font-size: 18px; }
   </style>
 </head>
-
 <body>
   <h1>🤟 Traductor de señas</h1>
   <p>Coloca tu mano frente a la cámara.</p>
-
   <button id="iniciar">Activar cámara</button>
-
   <div id="webcam"></div>
-  <div id="resultado">Pulsa «Activar cámara» para comenzar.</div>
+  <div id="resultado">Esperando una seña...</div>
   <div id="lista"></div>
 
   <script>
-    // Los archivos del modelo deben estar junto a index.html.
-    const URL_MODELO = "./";
+    const URL = "./";
+    let modelo, camara, ocupado = false;
 
-    let modelo;
-    let camara;
-    let ocupado = false;
-    let ultimaVoz = "";
-    let ultimaVez = 0;
-    let vozActivada = false;
-    let procesando = false;
-
-    const resultado = document.getElementById("resultado");
-    const botonInicio = document.getElementById("iniciar");
-    const botonVoz = document.getElementById("voz");
-
-    // Leer en español la seña reconocida.
-    function hablar(texto) {
-      if (!vozActivada || !("speechSynthesis" in window)) return;
-
-      const ahora = Date.now();
-
-      // Evitar repetir la misma palabra continuamente.
-      if (texto === ultimaVoz && ahora - ultimaVez < 2500) return;
-
-      ultimaVoz = texto;
-      ultimaVez = ahora;
-
-      window.speechSynthesis.cancel();
-
-      const mensaje = new SpeechSynthesisUtterance(texto);
-      mensaje.lang = "es-MX";
-      mensaje.rate = 0.9;
-      mensaje.pitch = 1;
-
-      window.speechSynthesis.speak(mensaje);
-    }
-
-    botonVoz.onclick = () => {
-      if (!("speechSynthesis" in window)) {
-        resultado.textContent =
-          "Tu navegador no admite la función de voz.";
-        return;
-      }
-
-      vozActivada = true;
-      botonVoz.textContent = "Voz activada";
-      botonVoz.disabled = true;
-      hablar("Voz activada");
-    };
-
-    botonInicio.onclick = async () => {
-      botonInicio.disabled = true;
-      resultado.textContent = "Cargando modelo...";
-      document.getElementById("lista").textContent = "";
+    document.getElementById("iniciar").onclick = async () => {
+      const boton = document.getElementById("iniciar");
+      boton.disabled = true;
+      document.getElementById("resultado").textContent =
+        "Cargando modelo...";
 
       try {
-        // Comprobar que existan los archivos del modelo.
-        const respuesta = await fetch(URL_MODELO + "model.json");
-
-        if (!respuesta.ok) {
-          throw new Error(
-            "No se encontró model.json. Revisa la dirección de GitHub Pages."
-          );
-        }
-
         modelo = await tmImage.load(
-          URL_MODELO + "model.json",
-          URL_MODELO + "metadata.json"
+          URL + "model.json",
+          URL + "metadata.json"
         );
-
-        resultado.textContent = "Modelo cargado. Activando cámara...";
 
         camara = new tmImage.Webcam(300, 300, true);
         await camara.setup();
         await camara.play();
 
-        document.getElementById("webcam").replaceChildren(camara.canvas);
-
+        document.getElementById("webcam").appendChild(camara.canvas);
+        boton.textContent = "Cámara activada";
         ocupado = true;
-        botonInicio.textContent = "Cámara activada";
-        botonVoz.disabled = false;
-
-        resultado.textContent =
-          "¡Listo! Haz una seña frente a la cámara.";
         predecir();
-
       } catch (error) {
-        console.error("Error al iniciar:", error);
+        document.getElementById("resultado").textContent =
+          "No se pudo iniciar. Revisa el modelo y el permiso de cámara.";
+        console.error(error);
+        boton.disabled = false;
+      }
+    };
 
-        resultado.textContent =
+    async function predecir() {
+      if (!ocupado) return;
+      camara.update();
+      const resultados = await modelo.predict(camara.canvas);
+      resultados.sort((a, b) => b.probability - a.probability);
+
+      const mejor = resultados[0];
+      document.getElementById("resultado").textContent =
+        mejor.probability >= 0.70
+          ? "Seña: " + mejor.className
+          : "No se reconoce la seña";
+
+      document.getElementById("lista").innerHTML =
+        resultados.map(r =>
+          `<p>${r.className}: ${(r.probability * 100).toFixed(1)}%</p>`
+        ).join("");
+
+      requestAnimationFrame(predecir);
+    }
+  </script>
+</body>
+</html>
           "Error: " + (error.message || "No se pudo cargar el modelo.");
 
         botonInicio.disabled = false;
