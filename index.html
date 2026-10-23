@@ -3,9 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mi traductor de señas</title>
+  <title>Traductor de señas</title>
+
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -13,95 +15,81 @@
       background: #f0f4ff;
       padding: 20px;
     }
+
     h1 { color: #2346a0; }
-    button {
-      background: #2346a0;
-      color: white;
-      border: 0;
-      padding: 14px 24px;
-      border-radius: 10px;
-      font-size: 18px;
-    }
+
     #resultado {
       font-size: 28px;
       font-weight: bold;
       margin: 20px;
     }
-    #webcam { margin: auto; }
+
+    #webcam canvas {
+      max-width: 100%;
+      height: auto;
+      border-radius: 12px;
+    }
+
     #lista { font-size: 18px; }
   </style>
 </head>
+
 <body>
   <h1>🤟 Traductor de señas</h1>
   <p>Coloca tu mano frente a la cámara.</p>
-  <button id="iniciar">Activar cámara</button>
+
+  <p id="estado">Iniciando cámara y modelo...</p>
   <div id="webcam"></div>
-  <div id="resultado">Esperando una seña...</div>
+  <div id="resultado">Cargando modelo...</div>
   <div id="lista"></div>
 
   <script>
-    const URL = "./";
-    let modelo, camara, ocupado = false;
+    const URL_MODELO = "./";
 
-    document.getElementById("iniciar").onclick = async () => {
-      const boton = document.getElementById("iniciar");
-      boton.disabled = true;
-      document.getElementById("resultado").textContent =
-        "Cargando modelo...";
+    let modelo;
+    let camara;
+    let activo = false;
+    let procesando = false;
 
+    async function iniciar() {
       try {
+        document.getElementById("estado").textContent =
+          "Cargando modelo...";
+
         modelo = await tmImage.load(
-          URL + "model.json",
-          URL + "metadata.json"
+          URL_MODELO + "model.json",
+          URL_MODELO + "metadata.json"
         );
+
+        document.getElementById("estado").textContent =
+          "Solicitando permiso para la cámara...";
 
         camara = new tmImage.Webcam(300, 300, true);
         await camara.setup();
         await camara.play();
 
-        document.getElementById("webcam").appendChild(camara.canvas);
-        boton.textContent = "Cámara activada";
-        ocupado = true;
+        document.getElementById("webcam").replaceChildren(
+          camara.canvas
+        );
+
+        activo = true;
+
+        document.getElementById("estado").textContent =
+          "Cámara activa";
+
         predecir();
+
       } catch (error) {
-        document.getElementById("resultado").textContent =
-          "No se pudo iniciar. Revisa el modelo y el permiso de cámara.";
         console.error(error);
-        boton.disabled = false;
+        document.getElementById("estado").textContent =
+          "No se pudo iniciar. Revisa el permiso de cámara y los archivos del modelo.";
+        document.getElementById("resultado").textContent =
+          error.message || "Error al iniciar.";
       }
-    };
-
-    async function predecir() {
-      if (!ocupado) return;
-      camara.update();
-      const resultados = await modelo.predict(camara.canvas);
-      resultados.sort((a, b) => b.probability - a.probability);
-
-      const mejor = resultados[0];
-      document.getElementById("resultado").textContent =
-        mejor.probability >= 0.70
-          ? "Seña: " + mejor.className
-          : "No se reconoce la seña";
-
-      document.getElementById("lista").innerHTML =
-        resultados.map(r =>
-          `<p>${r.className}: ${(r.probability * 100).toFixed(1)}%</p>`
-        ).join("");
-
-      requestAnimationFrame(predecir);
     }
-  </script>
-</body>
-</html>
-          "Error: " + (error.message || "No se pudo cargar el modelo.");
-
-        botonInicio.disabled = false;
-        botonInicio.textContent = "Intentar de nuevo";
-      }
-    };
 
     async function predecir() {
-      if (!ocupado || procesando) return;
+      if (!activo || procesando) return;
 
       procesando = true;
 
@@ -114,34 +102,34 @@
         const mejor = resultados[0];
 
         if (mejor && mejor.probability >= 0.70) {
-          resultado.textContent =
-            "Seña: " + mejor.className + " (" +
-            (mejor.probability * 100).toFixed(1) + "%)";
-
-          hablar(mejor.className);
+          document.getElementById("resultado").textContent =
+            "Seña: " + mejor.className;
         } else {
-          resultado.textContent = "No se reconoce la seña";
+          document.getElementById("resultado").textContent =
+            "No se reconoce la seña";
         }
 
         document.getElementById("lista").innerHTML =
           resultados.map(r =>
-            "<p>" + r.className + ": " +
-            (r.probability * 100).toFixed(1) + "%</p>"
+            `<p>${r.className}: ${(r.probability * 100).toFixed(1)}%</p>`
           ).join("");
 
       } catch (error) {
-        console.error("Error al reconocer:", error);
-        resultado.textContent = "Error al reconocer la seña.";
-        ocupado = false;
-        return;
+        console.error(error);
+        activo = false;
+        document.getElementById("estado").textContent =
+          "Error al reconocer. Revisa el modelo.";
       } finally {
         procesando = false;
       }
 
-      if (ocupado) {
-        setTimeout(predecir, 150);
-      }
+      if (activo) setTimeout(predecir, 150);
     }
+
+    // Iniciar automáticamente al abrir la página.
+    window.addEventListener("load", iniciar);
   </script>
+</body>
+</html>
 </body>
 </html>
